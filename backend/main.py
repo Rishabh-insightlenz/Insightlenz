@@ -24,6 +24,9 @@ async def lifespan(app: FastAPI):
         ai_provider=settings.active_ai_provider,
         ai_model=settings.active_ai_model,
     )
+    # Initialise database tables (no-op if already exist)
+    from db.database import init_db
+    await init_db()
     yield
     log.info("insightlenz_shutdown")
 

@@ -1,0 +1,41 @@
+version: '3.9'
+
+# InsightLenz — Local Development Stack
+# Usage: docker-compose up -d
+# Then run: cd backend && bash ../run.sh
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: insightlenz_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: insightlenz
+      POSTGRES_USER: insightlenz
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insightlenz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: insightlenz_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local

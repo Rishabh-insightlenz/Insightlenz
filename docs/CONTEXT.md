@@ -97,11 +97,39 @@ AOSP fork. InsightLenz replaces Android. Every layer of the device is owned by I
 
 ## What's Still Open
 
-- [ ] GitHub repo URL (Rishi to create on github.com/new)
-- [ ] Spare Android phone model
-- [ ] Phase 0 configuration plan (next immediate step)
-- [ ] Backend architecture deep dive
-- [ ] Context engine data model
+- [x] GitHub repo — github.com/Rishabh-insightlenz/Insightlenz
+- [x] Spare Android phone — Samsung Galaxy M07 (Android 15, One UI 7, Helio G99, 4GB RAM)
+- [x] Backend architecture — FastAPI + PostgreSQL + Redis + model-agnostic AI
+- [x] Context engine — built and tested
+- [x] First live InsightLenz response — generated via Groq/llama-3.3-70b
+- [ ] PostgreSQL running locally (needs: docker-compose up -d, then bash run.sh)
+- [ ] Anthropic API credits (add $5 at console.anthropic.com to switch to Claude)
+- [ ] Android app — Kotlin skeleton not started yet
+- [ ] ADB wireless debugging — phone ready, waiting for first APK
+
+---
+
+## Next Session — Start Here
+
+**To get the full stack running locally:**
+```bash
+# 1. Start PostgreSQL + Redis (requires Docker Desktop)
+docker-compose up -d
+
+# 2. Start InsightLenz backend (one command)
+bash run.sh
+```
+
+**To verify everything is working:**
+```bash
+curl http://localhost:8000/health
+# Should show: database: "connected"
+```
+
+**What to build next:**
+1. Wire up repository layer to the API routes (so context persists across restarts)
+2. Start the Android app — Kotlin project in `android/` folder
+3. Add `$5` Anthropic credits to switch from Groq to Claude Sonnet
 
 ---
 
@@ -110,3 +138,6 @@ AOSP fork. InsightLenz replaces Android. Every layer of the device is owned by I
 | Date | What We Did |
 |------|-------------|
 | 2026-03-17 | Brainstormed vision, locked architecture, named the product, set up repo structure |
+| 2026-03-17 | Built backend v0.1 — Context Engine, AI Orchestrator, Workflow Engine, API routes |
+| 2026-03-17 | Added Groq provider. **InsightLenz spoke for the first time.** Morning brief generated with full Rishi context. |
+| 2026-03-17 | (Overnight) Built full PostgreSQL persistence layer — DB models, Alembic migrations, repository pattern, conversation history, insight storage, app usage tracking. Added docker-compose.yml and run.sh one-command startup. |
