@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.env
+.env
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Android
+*.apk
+*.aab
+*.class
+.gradle/
+local.properties
+android/.idea/
+android/build/
+
+# AOSP
+out/
+*.img
+*.zip
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+secrets/
+*.key
+*.pem
+config/local.py
