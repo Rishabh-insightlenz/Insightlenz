@@ -75,6 +75,8 @@ class AIOrchestrator:
             return await self._call_openai(system_prompt, user_message, history)
         elif self.provider == "google":
             return await self._call_google(system_prompt, user_message, history)
+        elif self.provider == "groq":
+            return await self._call_groq(system_prompt, user_message, history)
         else:
             raise ValueError(f"Unknown AI provider: {self.provider}")
 
@@ -182,6 +184,32 @@ Don't pad it. If it's not genuinely useful, say nothing.
             content=response.choices[0].message.content,
             model=self.model,
             provider="openai",
+            tokens_used=response.usage.total_tokens,
+        )
+
+    async def _call_groq(
+        self,
+        system: str,
+        user_message: str,
+        history: list[Message]
+    ) -> AIResponse:
+        from groq import AsyncGroq
+        client = AsyncGroq(api_key=settings.groq_api_key)
+
+        messages = [{"role": "system", "content": system}]
+        messages += [{"role": m.role, "content": m.content} for m in history]
+        messages.append({"role": "user", "content": user_message})
+
+        response = await client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=2048,
+        )
+
+        return AIResponse(
+            content=response.choices[0].message.content,
+            model=self.model,
+            provider="groq",
             tokens_used=response.usage.total_tokens,
         )
 
