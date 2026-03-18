@@ -198,13 +198,22 @@ private fun FeedHeader(uiState: ChatUiState, onRefresh: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column {
-            Text(
-                text = "INSIGHTLENZ",
-                color = AccentBlue,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 3.sp
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "INSIGHTLENZ",
+                    color = AccentBlue,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 3.sp
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "v0.3",
+                    color = AccentBlue.copy(alpha = 0.5f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
             Text(
                 text = currentTime.value,
                 color = TextSecondary,
