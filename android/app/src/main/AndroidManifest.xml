@@ -44,6 +44,25 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!--
+        Required on Android 11+ to query all installed apps via PackageManager.
+        Without this, getInstalledApps() returns an empty list on API 30+.
+    -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!--
+        Alternative / complementary: declare the launcher intent we want to query.
+        Belt-and-suspenders with QUERY_ALL_PACKAGES above.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".InsightLenzApp"
         android:allowBackup="false"
@@ -52,13 +71,25 @@
         android:usesCleartextTraffic="true">
 
         <!-- ── Main Activity ────────────────────────────────────────────── -->
+        <!--
+            Two intent-filters:
+            1. LAUNCHER — makes InsightLenz appear in the app drawer of other launchers
+            2. HOME + DEFAULT — registers InsightLenz as a valid home screen.
+               Android will prompt "Which launcher do you want to use?" on first home press.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

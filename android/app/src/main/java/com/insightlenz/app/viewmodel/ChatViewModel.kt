@@ -6,10 +6,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.insightlenz.app.api.ApiClient
 import com.insightlenz.app.api.ChatRequest
+import com.insightlenz.app.launcher.AppInfo
+import com.insightlenz.app.launcher.AppRepository
 import com.insightlenz.app.service.AppLaunchDetector
 import com.insightlenz.app.usage.AppUsageStat
 import com.insightlenz.app.usage.UsageStatsHelper
 import com.insightlenz.app.worker.UsageSyncWorker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,7 +46,11 @@ data class ChatUiState(
     val lastInsight: String? = null,
 
     // Screen state
-    val currentScreen: Screen = Screen.FEED
+    val currentScreen: Screen = Screen.FEED,
+
+    // Launcher state
+    val showAppDrawer: Boolean = false,
+    val dockApps: List<AppInfo> = emptyList(),
 )
 
 enum class Screen { FEED, CHAT }
@@ -69,7 +77,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    // Separate flow for the full app list — not in UiState since Drawables aren't serialisable
+    private val _allApps = MutableStateFlow<List<AppInfo>>(emptyList())
+    val allApps: StateFlow<List<AppInfo>> = _allApps.asStateFlow()
+
     private val usageHelper = UsageStatsHelper(application)
+    private val appRepo = AppRepository(application)
 
     // Session ID is fixed per day — persists across app kills
     val sessionId: String = todaySessionId()
@@ -79,6 +92,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         loadUsageStats()
         loadContext()
         loadChatHistory()   // Restore today's conversation from backend
+        loadInstalledApps() // Load launcher app list
     }
 
     // ── Connection ─────────────────────────────────────────────────────────────
@@ -186,6 +200,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openFeed() {
         _uiState.value = _uiState.value.copy(currentScreen = Screen.FEED)
+    }
+
+    // ── Launcher ───────────────────────────────────────────────────────────────
+
+    /**
+     * Load all installed apps and dock on a background thread.
+     * PackageManager queries are slow — must not run on the main thread.
+     */
+    fun loadInstalledApps() {
+        viewModelScope.launch {
+            val apps = withContext(Dispatchers.IO) { appRepo.getInstalledApps() }
+            val dockPkgs = withContext(Dispatchers.IO) { appRepo.getDockPackages() }
+            val dockApps = withContext(Dispatchers.IO) { appRepo.resolveApps(dockPkgs) }
+            _allApps.value = apps
+            _uiState.value = _uiState.value.copy(dockApps = dockApps)
+        }
+    }
+
+    fun openAppDrawer() {
+        _uiState.value = _uiState.value.copy(showAppDrawer = true)
+    }
+
+    fun closeAppDrawer() {
+        _uiState.value = _uiState.value.copy(showAppDrawer = false)
+    }
+
+    fun launchApp(packageName: String) {
+        closeAppDrawer()
+        viewModelScope.launch(Dispatchers.IO) {
+            appRepo.launchApp(packageName)
+        }
     }
 
     // ── Chat ───────────────────────────────────────────────────────────────────

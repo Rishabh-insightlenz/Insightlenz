@@ -6,6 +6,7 @@ import android.provider.Settings
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,13 +24,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.insightlenz.app.launcher.AppInfo
 import com.insightlenz.app.ui.theme.*
 import com.insightlenz.app.usage.AppUsageStat
 import com.insightlenz.app.usage.UsageStatsHelper
@@ -39,10 +43,16 @@ import com.insightlenz.app.viewmodel.Message
 import com.insightlenz.app.viewmodel.Screen
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
 @Composable
 fun HomeScreen(viewModel: ChatViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
+    val allApps by viewModel.allApps.collectAsState()
+
+    // Track swipe gesture deltas for direction detection
+    var swipeDeltaX by remember { mutableFloatStateOf(0f) }
+    var swipeDeltaY by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = Modifier
@@ -51,24 +61,181 @@ fun HomeScreen(viewModel: ChatViewModel = viewModel()) {
             .systemBarsPadding()
             .imePadding()
     ) {
-        AnimatedContent(
-            targetState = uiState.currentScreen,
-            transitionSpec = {
-                if (targetState == Screen.CHAT) {
-                    slideInHorizontally { it } + fadeIn() togetherWith
-                    slideOutHorizontally { -it } + fadeOut()
-                } else {
-                    slideInHorizontally { -it } + fadeIn() togetherWith
-                    slideOutHorizontally { it } + fadeOut()
+        // ── Main content: Feed or Chat ─────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(uiState.currentScreen, uiState.showAppDrawer) {
+                    if (uiState.showAppDrawer) return@pointerInput
+                    detectDragGestures(
+                        onDragEnd = {
+                            val dominantX = abs(swipeDeltaX) > abs(swipeDeltaY)
+                            when {
+                                // Swipe UP → open app drawer
+                                !dominantX && swipeDeltaY < -100f ->
+                                    viewModel.openAppDrawer()
+                                // Swipe RIGHT on Feed → open Chat
+                                dominantX && swipeDeltaX > 100f && uiState.currentScreen == Screen.FEED ->
+                                    viewModel.openChat()
+                                // Swipe LEFT on Chat → back to Feed
+                                dominantX && swipeDeltaX < -100f && uiState.currentScreen == Screen.CHAT ->
+                                    viewModel.openFeed()
+                            }
+                            swipeDeltaX = 0f; swipeDeltaY = 0f
+                        },
+                        onDragCancel = { swipeDeltaX = 0f; swipeDeltaY = 0f },
+                        onDrag = { _, dragAmount ->
+                            swipeDeltaX += dragAmount.x
+                            swipeDeltaY += dragAmount.y
+                        }
+                    )
                 }
-            },
-            label = "screen_transition"
-        ) { screen ->
-            when (screen) {
-                Screen.FEED -> FeedScreen(uiState, viewModel)
-                Screen.CHAT -> ChatScreen(uiState, viewModel)
+        ) {
+            AnimatedContent(
+                targetState = uiState.currentScreen,
+                transitionSpec = {
+                    if (targetState == Screen.CHAT) {
+                        slideInHorizontally { it } + fadeIn() togetherWith
+                        slideOutHorizontally { -it } + fadeOut()
+                    } else {
+                        slideInHorizontally { -it } + fadeIn() togetherWith
+                        slideOutHorizontally { it } + fadeOut()
+                    }
+                },
+                label = "screen_transition"
+            ) { screen ->
+                when (screen) {
+                    Screen.FEED -> FeedScreen(uiState, viewModel)
+                    Screen.CHAT -> ChatScreen(uiState, viewModel)
+                }
             }
         }
+
+        // ── Dock — pinned apps + Jarvis button, visible on Feed ───────────────
+        AnimatedVisibility(
+            visible = uiState.currentScreen == Screen.FEED && !uiState.showAppDrawer,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            AppDock(
+                apps = uiState.dockApps,
+                onAppClick = { viewModel.launchApp(it) },
+                onDrawerOpen = { viewModel.openAppDrawer() },
+                onChatOpen = { viewModel.openChat() },
+            )
+        }
+
+        // ── App Drawer — slides up over everything ────────────────────────────
+        AppDrawer(
+            apps = allApps,
+            visible = uiState.showAppDrawer,
+            onDismiss = { viewModel.closeAppDrawer() },
+            onAppLaunch = { viewModel.launchApp(it) },
+        )
+    }
+}
+
+// ── Dock ───────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun AppDock(
+    apps: List<AppInfo>,
+    onAppClick: (String) -> Unit,
+    onDrawerOpen: () -> Unit,
+    onChatOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(Color.Transparent, Color(0xEE080810))
+                )
+            )
+            .padding(bottom = 16.dp, top = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // Swipe-up handle — visual hint + tap shortcut
+        Box(
+            modifier = Modifier
+                .width(40.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color.White.copy(alpha = 0.18f))
+                .clickable { onDrawerOpen() }
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Dock pill
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 20.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(Color(0xCC12121E))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            apps.forEach { app ->
+                DockIcon(app = app, onClick = { onAppClick(app.packageName) })
+            }
+
+            // Spacer if no apps yet
+            if (apps.isEmpty()) {
+                repeat(4) {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White.copy(alpha = 0.05f))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Jarvis button — always last in dock
+            Box(
+                modifier = Modifier
+                    .size(54.dp)
+                    .clip(CircleShape)
+                    .background(AccentBlue)
+                    .clickable { onChatOpen() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("✦", color = Color.White, fontSize = 20.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "↑  swipe up for all apps",
+            color = Color.White.copy(alpha = 0.15f),
+            fontSize = 10.sp,
+            letterSpacing = 1.sp,
+        )
+    }
+}
+
+@Composable
+private fun DockIcon(app: AppInfo, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(54.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        AppIcon(
+            drawable = app.icon,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(12.dp))
+        )
     }
 }
 
@@ -82,7 +249,7 @@ private fun FeedScreen(uiState: ChatUiState, viewModel: ChatViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 80.dp),
+        contentPadding = PaddingValues(bottom = 160.dp), // space for dock
         verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
         // ── Header ─────────────────────────────────────────────────────────────
@@ -136,39 +303,6 @@ private fun FeedScreen(uiState: ChatUiState, viewModel: ChatViewModel) {
                     onClick = { viewModel.getEveningReview() },
                     enabled = uiState.isConnected && !uiState.isLoading
                 )
-            }
-        }
-    }
-
-    // ── Floating "Talk to Jarvis" button ───────────────────────────────────────
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = AccentBlue,
-            onClick = { viewModel.openChat() }
-        ) {
-            Row(
-                modifier = Modifier.padding(vertical = 14.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Thinking...", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                } else {
-                    Text("Talk to Jarvis", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                }
             }
         }
     }
