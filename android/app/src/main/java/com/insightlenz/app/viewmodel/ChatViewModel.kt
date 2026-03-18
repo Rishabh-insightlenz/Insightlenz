@@ -1,6 +1,7 @@
 package com.insightlenz.app.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.insightlenz.app.api.ApiClient
@@ -13,6 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // ── UI Models ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +47,21 @@ data class ChatUiState(
 
 enum class Screen { FEED, CHAT }
 
+// ── Session ID helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Session ID strategy: one session per calendar day.
+ * Format: "android_2026-03-18"
+ * This means:
+ *   - History persists across app kills within the same day
+ *   - Each new day starts fresh (but old sessions remain searchable in history)
+ *   - Backend groups conversations cleanly by day
+ */
+private fun todaySessionId(): String {
+    val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    return "android_$today"
+}
+
 // ── ViewModel ──────────────────────────────────────────────────────────────────
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -52,10 +71,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val usageHelper = UsageStatsHelper(application)
 
+    // Session ID is fixed per day — persists across app kills
+    val sessionId: String = todaySessionId()
+
     init {
         checkConnection()
         loadUsageStats()
         loadContext()
+        loadChatHistory()   // Restore today's conversation from backend
     }
 
     // ── Connection ─────────────────────────────────────────────────────────────
@@ -116,6 +139,45 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         checkConnection()
     }
 
+    /**
+     * Load today's chat history from backend on startup.
+     * This means the conversation is fully restored even after the app is killed.
+     * Only loads the current day's session — older history is in the history screen.
+     */
+    fun loadChatHistory() {
+        viewModelScope.launch {
+            try {
+                val history = ApiClient.service.getChatHistory(
+                    sessionId = sessionId,
+                    limit = 50
+                )
+                if (history.isNotEmpty()) {
+                    val messages = history
+                        // Filter out system triggers (morning brief, etc. shown inline already)
+                        .filter { !it.content.startsWith("[") }
+                        .map { msg ->
+                            Message(
+                                content = msg.content,
+                                isUser = msg.role == "user",
+                                source = msg.source
+                            )
+                        }
+                    if (messages.isNotEmpty()) {
+                        _uiState.value = _uiState.value.copy(
+                            messages = messages,
+                            // Last assistant message becomes the feed insight
+                            lastInsight = messages.lastOrNull { !it.isUser }?.content
+                                ?.take(120)
+                                ?.let { if (it.length == 120) "$it…" else it }
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                // History load failure is silent — app still works, just no restored history
+            }
+        }
+    }
+
     // ── Navigation ─────────────────────────────────────────────────────────────
 
     fun openChat() {
@@ -146,7 +208,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                val response = ApiClient.service.chat(ChatRequest(message = message))
+                val response = ApiClient.service.chat(ChatRequest(message = message, session_id = sessionId))
                 val reply = response.response
                 appendMessage(Message(content = reply, isUser = false))
                 // Surface last AI response in the feed as an insight

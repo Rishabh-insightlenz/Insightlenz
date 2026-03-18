@@ -78,11 +78,15 @@ class MemoryExtractor:
         try:
             memories = await self._extract(user_message, assistant_response)
             saved = 0
+            skipped = 0
             for memory in memories:
-                await memory_repo.save(user_id, memory)
-                saved += 1
-            if saved:
-                log.info("memories_extracted", user_id=str(user_id), count=saved)
+                result = await memory_repo.save(user_id, memory)
+                if result is not None:
+                    saved += 1
+                else:
+                    skipped += 1
+            if saved or skipped:
+                log.info("memories_extracted", user_id=str(user_id), saved=saved, skipped_duplicates=skipped)
             return memories
         except Exception as e:
             # Never crash the chat over a memory extraction failure

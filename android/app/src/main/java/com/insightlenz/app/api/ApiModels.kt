@@ -56,3 +56,28 @@ data class AppUsageSyncRequest(
 data class AppUsageSyncResponse(
     val synced: Int
 )
+
+// ── History ────────────────────────────────────────────────────────────────────
+
+data class HistoryMessage(
+    val role: String,          // "user" | "assistant"
+    val content: String,
+    val source: String,        // "chat" | "morning_brief" | "evening_review"
+    val created_at: String
+)
+
+data class SessionSummary(
+    val session_id: String,
+    val message_count: Int,
+    val last_message_at: String,
+    val preview: String
+)
+
+data class MemoryItem(
+    val id: String,
+    val type: String,
+    val content: String,
+    val context: String?,
+    val tags: List<String>,
+    val created_at: String
+)

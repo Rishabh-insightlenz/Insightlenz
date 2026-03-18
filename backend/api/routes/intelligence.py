@@ -18,11 +18,13 @@ What happens on every /chat call:
   8. Fire memory extraction in background (learns from this conversation)
 """
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from uuid import UUID
+from datetime import datetime
+from typing import List, Optional
 
 from core.context_engine import ContextEngine
 from core.ai_orchestrator import AIOrchestrator, Message as AIMessage
@@ -52,6 +54,23 @@ class ChatResponse(BaseModel):
     response: str
     provider: str
     model: str
+
+
+class MessageOut(BaseModel):
+    role: str          # "user" | "assistant"
+    content: str
+    source: str        # "chat" | "morning_brief" | "evening_review" | "decide"
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SessionSummary(BaseModel):
+    session_id: str
+    message_count: int
+    last_message_at: datetime
+    preview: str       # first user message of that session, truncated
 
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -290,3 +309,85 @@ async def weekly_review(db: AsyncSession = Depends(get_db)):
         provider=orchestrator.provider,
         model=orchestrator.model,
     )
+
+
+# ── History ────────────────────────────────────────────────────────────────────
+
+@router.get("/history", response_model=List[MessageOut])
+async def get_history(
+    session_id: str = Query(default="default"),
+    limit: int = Query(default=50, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetch message history for a given session.
+    Called by Android on app startup to restore conversation state.
+    Returns messages in chronological order (oldest first).
+    """
+    user_repo = UserContextRepository(db)
+    db_ctx = await user_repo.get_first()
+    if not db_ctx:
+        raise HTTPException(status_code=404, detail="User not initialised.")
+
+    conv_repo = ConversationRepository(db)
+    messages = await conv_repo.get_recent(db_ctx.id, limit=limit, session_id=session_id)
+
+    return [
+        MessageOut(
+            role=m.role,
+            content=m.content,
+            source=m.source or "chat",
+            created_at=m.created_at,
+        )
+        for m in messages
+    ]
+
+
+@router.get("/sessions", response_model=List[SessionSummary])
+async def list_sessions(
+    limit: int = Query(default=20, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all distinct conversation sessions, most recent first.
+    Used by the history screen in the Android app.
+    Each entry shows session_id, message count, last activity, and a preview.
+    """
+    user_repo = UserContextRepository(db)
+    db_ctx = await user_repo.get_first()
+    if not db_ctx:
+        raise HTTPException(status_code=404, detail="User not initialised.")
+
+    conv_repo = ConversationRepository(db)
+    sessions = await conv_repo.list_sessions(db_ctx.id, limit=limit)
+    return sessions
+
+
+@router.get("/memories", response_model=List[dict])
+async def get_memories(
+    limit: int = Query(default=50, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return all stored memories for the user — what Jarvis has learned about them.
+    Used for the memory viewer screen in the app.
+    """
+    user_repo = UserContextRepository(db)
+    db_ctx = await user_repo.get_first()
+    if not db_ctx:
+        raise HTTPException(status_code=404, detail="User not initialised.")
+
+    memory_repo = MemoryRepository(db)
+    memories = await memory_repo.get_recent(db_ctx.id, limit=limit)
+
+    return [
+        {
+            "id": str(m.id),
+            "type": m.type,
+            "content": m.content,
+            "context": m.context,
+            "tags": m.tags or [],
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in memories
+    ]

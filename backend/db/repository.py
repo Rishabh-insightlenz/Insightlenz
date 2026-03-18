@@ -7,7 +7,7 @@ This keeps the AI and business logic clean and testable.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, desc, and_
+from sqlalchemy import select, update, delete, desc, and_, func, distinct
 from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
 from uuid import UUID
@@ -168,6 +168,55 @@ class ConversationRepository:
         rows = result.scalars().all()
         return list(reversed(rows))  # chronological order
 
+    async def list_sessions(self, user_id: UUID, limit: int = 20) -> list[dict]:
+        """
+        List distinct sessions for the history screen.
+        Returns session_id, message count, last activity, and a preview
+        (the first user message of that session).
+        """
+        # Get distinct session IDs with their last message time and count
+        subq = (
+            select(
+                ConversationDB.session_id,
+                func.count(ConversationDB.id).label("message_count"),
+                func.max(ConversationDB.created_at).label("last_message_at"),
+            )
+            .where(ConversationDB.user_id == user_id)
+            .group_by(ConversationDB.session_id)
+            .order_by(desc(func.max(ConversationDB.created_at)))
+            .limit(limit)
+            .subquery()
+        )
+
+        result = await self.db.execute(select(subq))
+        rows = result.fetchall()
+
+        sessions = []
+        for row in rows:
+            session_id, message_count, last_message_at = row
+
+            # Get preview: first user message from this session
+            preview_result = await self.db.execute(
+                select(ConversationDB.content)
+                .where(ConversationDB.user_id == user_id)
+                .where(ConversationDB.session_id == session_id)
+                .where(ConversationDB.role == "user")
+                .where(~ConversationDB.content.startswith("["))  # exclude system triggers
+                .order_by(ConversationDB.created_at.asc())
+                .limit(1)
+            )
+            preview_row = preview_result.scalar_one_or_none()
+            preview = (preview_row[:80] + "…") if preview_row and len(preview_row) > 80 else (preview_row or "No messages")
+
+            sessions.append({
+                "session_id": session_id,
+                "message_count": message_count,
+                "last_message_at": last_message_at,
+                "preview": preview,
+            })
+
+        return sessions
+
 
 class MemoryRepository:
     """Persistence for InsightLenz memories."""
@@ -175,7 +224,38 @@ class MemoryRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def save(self, user_id: UUID, memory: Memory) -> MemoryDB:
+    async def save(self, user_id: UUID, memory: Memory) -> MemoryDB | None:
+        """
+        Save a memory — skips if a near-duplicate already exists.
+        Deduplication: if any existing memory has the same type and the new
+        content overlaps significantly (>70% word match), skip it.
+        This prevents Jarvis from accumulating 50 copies of "user values fitness".
+        """
+        # Check for near-duplicates of same type
+        existing = await self.db.execute(
+            select(MemoryDB)
+            .where(MemoryDB.user_id == user_id)
+            .where(MemoryDB.type == memory.type.value)
+            .order_by(desc(MemoryDB.created_at))
+            .limit(30)
+        )
+        existing_memories = existing.scalars().all()
+
+        new_words = set(memory.content.lower().split())
+        for existing_mem in existing_memories:
+            existing_words = set(existing_mem.content.lower().split())
+            if not new_words or not existing_words:
+                continue
+            overlap = len(new_words & existing_words) / max(len(new_words), len(existing_words))
+            if overlap > 0.7:
+                log.info(
+                    "memory_deduplicated",
+                    user_id=str(user_id),
+                    overlap=round(overlap, 2),
+                    skipped_content=memory.content[:60],
+                )
+                return None  # skip duplicate
+
         db_memory = MemoryDB(
             id=memory.id,
             user_id=user_id,

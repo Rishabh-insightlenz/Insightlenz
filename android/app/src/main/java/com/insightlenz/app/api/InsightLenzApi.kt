@@ -7,6 +7,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
 /**
@@ -43,6 +44,24 @@ interface InsightLenzApiService {
 
     @POST("context/app-usage")
     suspend fun syncAppUsage(@Body request: AppUsageSyncRequest): AppUsageSyncResponse
+
+    // ── History ──────────────────────────────────────────────────────────────
+
+    @GET("intelligence/history")
+    suspend fun getChatHistory(
+        @Query("session_id") sessionId: String,
+        @Query("limit") limit: Int = 50
+    ): List<HistoryMessage>
+
+    @GET("intelligence/sessions")
+    suspend fun getSessions(
+        @Query("limit") limit: Int = 20
+    ): List<SessionSummary>
+
+    @GET("intelligence/memories")
+    suspend fun getMemories(
+        @Query("limit") limit: Int = 50
+    ): List<MemoryItem>
 }
 
 object ApiClient {
