@@ -4,6 +4,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.insightlenz.app.launcher.AppInfo
 import com.insightlenz.app.ui.theme.*
 import com.insightlenz.app.usage.AppUsageStat
 import com.insightlenz.app.usage.UsageStatsHelper
@@ -789,3 +791,4 @@ private fun ThinkingBubble() {
         }
     }
 }
+
