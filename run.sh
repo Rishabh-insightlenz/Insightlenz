@@ -29,6 +29,9 @@ fi
 source "$VENV_DIR/bin/activate"
 
 # ── Step 2: Install dependencies ─────────────────────────────────────────────
+echo "→ Upgrading pip and setuptools (Python 3.13 compatibility)..."
+pip install --upgrade pip setuptools wheel -q
+
 echo "→ Installing dependencies..."
 pip install -r "$BACKEND_DIR/requirements.txt" -q
 
