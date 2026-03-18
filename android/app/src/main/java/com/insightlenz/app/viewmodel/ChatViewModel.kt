@@ -51,6 +51,9 @@ data class ChatUiState(
     // Launcher state
     val showAppDrawer: Boolean = false,
     val dockApps: List<AppInfo> = emptyList(),
+
+    // Inline Jarvis reply on home screen (shown above the bar, fades after a few seconds)
+    val lastJarvisReply: String? = null,
 )
 
 enum class Screen { FEED, CHAT }
@@ -239,16 +242,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(inputText = text)
     }
 
+    /**
+     * Main send handler.
+     * 1. Detect app-launch intent ("open Instagram", "launch Maps", etc.)
+     *    → launch the app + show brief inline confirmation
+     * 2. Otherwise → send to Jarvis API
+     *    → if on Feed, show response inline above the bar
+     *    → if already in Chat, append to conversation
+     */
     fun sendMessage() {
         val message = _uiState.value.inputText.trim()
         if (message.isBlank()) return
 
+        _uiState.value = _uiState.value.copy(inputText = "", error = null)
+
+        // ── Intent detection ────────────────────────────────────────────────
+        val appTarget = detectAppLaunchIntent(message)
+        if (appTarget != null) {
+            val match = _allApps.value.firstOrNull {
+                it.appName.contains(appTarget, ignoreCase = true) ||
+                it.packageName.contains(appTarget, ignoreCase = true)
+            }
+            if (match != null) {
+                // Show brief inline reply then launch
+                _uiState.value = _uiState.value.copy(
+                    lastJarvisReply = "Opening ${match.appName}…"
+                )
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(600)
+                    launchApp(match.packageName)
+                    kotlinx.coroutines.delay(2000)
+                    _uiState.value = _uiState.value.copy(lastJarvisReply = null)
+                }
+                return
+            }
+        }
+
+        // ── Regular Jarvis message ──────────────────────────────────────────
+        val onFeed = _uiState.value.currentScreen == Screen.FEED
+
         appendMessage(Message(content = message, isUser = true))
         _uiState.value = _uiState.value.copy(
-            inputText = "",
             isLoading = true,
-            error = null,
-            currentScreen = Screen.CHAT
+            // Only navigate to chat if user explicitly went to chat screen
+            currentScreen = if (onFeed) Screen.FEED else Screen.CHAT
         )
 
         viewModelScope.launch {
@@ -256,18 +293,47 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val response = ApiClient.service.chat(ChatRequest(message = message, session_id = sessionId))
                 val reply = response.response
                 appendMessage(Message(content = reply, isUser = false))
-                // Surface last AI response in the feed as an insight
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    lastInsight = if (reply.length > 120) reply.take(120) + "…" else reply
+                    lastInsight = if (reply.length > 120) reply.take(120) + "…" else reply,
+                    // Show inline on Feed; null in Chat (it's already in the bubble list)
+                    lastJarvisReply = if (onFeed) reply.take(200).let { if (reply.length > 200) "$it…" else it } else null
                 )
+                // Auto-clear inline reply after 8 seconds
+                if (onFeed) {
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(8000)
+                        if (_uiState.value.currentScreen == Screen.FEED)
+                            _uiState.value = _uiState.value.copy(lastJarvisReply = null)
+                    }
+                }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = "Error: ${e.message}"
-                )
+                _uiState.value = _uiState.value.copy(isLoading = false, error = "Error: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Detect if a message is an app-launch intent.
+     * Returns the app name/keyword to search for, or null if it's a regular message.
+     * Examples: "open instagram" → "instagram"
+     *           "launch maps" → "maps"
+     *           "go to spotify" → "spotify"
+     */
+    private fun detectAppLaunchIntent(message: String): String? {
+        val lower = message.lowercase().trim()
+        val patterns = listOf("open ", "launch ", "go to ", "start ", "show me ", "take me to ")
+        for (pattern in patterns) {
+            if (lower.startsWith(pattern)) {
+                return lower.removePrefix(pattern).trim().takeIf { it.isNotBlank() }
+            }
+        }
+        // Single word that exactly matches an installed app name
+        if (!lower.contains(" ")) {
+            val exactMatch = _allApps.value.any { it.appName.equals(lower, ignoreCase = true) }
+            if (exactMatch) return lower
+        }
+        return null
     }
 
     fun getMorningBrief() {
@@ -280,7 +346,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     lastInsight = response.response.take(120) + "…",
-                    currentScreen = Screen.CHAT
+                    lastJarvisReply = response.response.take(200),
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = "Error: ${e.message}")
@@ -298,7 +364,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     lastInsight = response.response.take(120) + "…",
-                    currentScreen = Screen.CHAT
+                    lastJarvisReply = response.response.take(200),
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = "Error: ${e.message}")
