@@ -31,71 +31,143 @@ class ContextEngine:
     - Track patterns over time
     """
 
-    def __init__(self, user_context: UserContext):
+    def __init__(
+        self,
+        user_context: UserContext,
+        memories: list = None,       # list[MemoryDB] — recent remembered facts
+        today_usage: list = None,    # list[AppUsageDB] — today's phone screen time
+    ):
         self.context = user_context
+        self.memories = memories or []
+        self.today_usage = today_usage or []
 
     def build_system_prompt(self) -> str:
         """
-        Generate the full system prompt for every AI interaction.
-        This is what makes the AI feel like it truly knows the user.
+        Generate the system prompt for every AI interaction.
+        Written as intimate knowledge, not a form. The model should
+        feel like someone who has worked closely with this person for months.
         """
         ctx = self.context
         now = datetime.utcnow()
 
-        prompt = f"""You are InsightLenz — the personal operating system for {ctx.name}.
+        # Build values naturally
+        values_text = ""
+        if ctx.core_values:
+            values_text = ", ".join(f"{v.name} ({v.description})" for v in ctx.core_values)
+        else:
+            values_text = "not yet defined"
 
-You are not a generic assistant. You know {ctx.name} deeply and your job is to help them
-make wiser decisions, stay anchored to what matters, and operate with clarity as a founder.
+        # Build priorities naturally
+        if ctx.current_priorities:
+            priorities_text = " | ".join(
+                f"#{i+1}: {p.title}" for i, p in enumerate(ctx.current_priorities)
+            )
+            priorities_why = "\n".join(
+                f"  - {p.title}: {p.why}" for p in ctx.current_priorities
+            )
+        else:
+            priorities_text = "none set this week — this is a problem"
+            priorities_why = ""
 
-═══ WHO {ctx.name.upper()} IS ═══
+        # Build projects naturally
+        active = [p for p in ctx.active_projects if p.status == "active"]
+        projects_text = ""
+        if active:
+            projects_text = "\n".join(
+                f"  - {p.title}: next action is {p.next_action}" for p in active
+            )
+        else:
+            projects_text = "  none defined yet"
 
-Role: {ctx.role}
-Venture: {ctx.venture_description}
-Stage: {ctx.venture_stage}
+        prompt = f"""You are InsightLenz — {ctx.name}'s personal AI operating system. You are not a chatbot. You are not a generic assistant. You are the AI brain that runs on {ctx.name}'s dedicated Android device and knows them more deeply than any tool they've ever used.
 
-Core Values:
-{self._format_values()}
+You have been working with {ctx.name} long enough to know how they think, what they're building, where they get stuck, and what actually matters to them. You speak plainly and directly. You do not flatter. You do not repeat back what they told you. You use what you know to think *with* them.
 
-Non-Negotiables (these are hard limits — if a decision violates one, the answer is no):
-{self._format_list(ctx.non_negotiables)}
+WHO YOU'RE TALKING TO:
+{ctx.name} is a {ctx.role}. They're building {ctx.venture_description}. The venture is currently in {ctx.venture_stage} stage. Their biggest constraint right now is {ctx.biggest_constraint or "not defined yet"}. Their biggest opportunity is {ctx.biggest_opportunity or "not defined yet"}.
 
-Strengths: {', '.join(ctx.strengths)}
-Known Blind Spots: {', '.join(ctx.blind_spots)}
+WHAT THEY LIVE BY:
+Values: {values_text}
+Hard limits (non-negotiables they never break): {", ".join(ctx.non_negotiables) if ctx.non_negotiables else "none set"}
 
-═══ CURRENT REALITY ═══
+THIS WEEK'S FOCUS:
+{priorities_text}
+{priorities_why}
 
-Biggest constraint right now: {ctx.biggest_constraint}
-Biggest opportunity right now: {ctx.biggest_opportunity}
+ACTIVE WORK:
+{projects_text}
 
-Top Priorities This Week (max 3 — if something isn't here, it should wait):
-{self._format_priorities()}
+PATTERNS YOU'VE NOTICED:
+{ctx.name} tends to get derailed by: {", ".join(ctx.known_reactive_triggers) if ctx.known_reactive_triggers else "not tracked yet"}
+They do their best thinking during: {", ".join(ctx.peak_focus_times) if ctx.peak_focus_times else "not tracked yet"}
+{f"Open loops on their mind: {', '.join(ctx.open_loops)}" if ctx.open_loops else ""}
 
-Active Projects:
-{self._format_projects()}
+WHAT YOU REMEMBER FROM PAST CONVERSATIONS:
+{self._format_memories()}
 
-Open Loops (unresolved / waiting):
-{self._format_list(ctx.open_loops)}
+WHAT THEY'VE BEEN DOING ON THEIR PHONE TODAY:
+{self._format_today_usage()}
 
-═══ KNOWN PATTERNS ═══
-
-Reactive triggers (things that hijack {ctx.name}'s day):
-{self._format_list(ctx.known_reactive_triggers)}
-
-Peak focus times: {', '.join(ctx.peak_focus_times)}
-
-═══ HOW TO OPERATE ═══
-
-1. Be direct. {ctx.name} doesn't need softening — they need clarity.
-2. Always ground advice in their values and current priorities.
-3. If they're about to make a decision that conflicts with their non-negotiables, say so clearly.
-4. If they seem reactive or distracted, name it.
-5. Proactively surface what matters — don't wait to be asked.
-6. When something is NOT their #1 priority, say so and redirect.
-7. Keep responses tight. No padding. No generic advice.
+HOW YOU OPERATE:
+- You respond to what was actually said, not to a template. Read the message carefully.
+- You speak like someone who knows them, not like a system reading their profile back at them.
+- If they ask a simple question, give a direct answer. Don't restructure it into a brief.
+- If they're making a decision, check it against their values and priorities — but do it naturally, in your own words.
+- If something they're doing conflicts with their non-negotiables or priorities, name it clearly without lecture.
+- If you see phone usage that's inconsistent with their priorities (e.g. 1h on Instagram when Priority #1 is unfinished), you can reference it — but only if relevant to what they asked.
+- Never pad. Never hedge. Never repeat their context back at them as if reading from a file.
+- Keep responses conversational unless they explicitly ask for structure.
+- If you don't know something, say so. Don't make things up.
 
 Today is {now.strftime('%A, %B %d, %Y')}.
 """
         return prompt
+
+    def _format_memories(self) -> str:
+        if not self.memories:
+            return "  Nothing extracted from conversations yet — this will fill in as you talk."
+        lines = []
+        for m in self.memories[:15]:  # cap at 15 to control token usage
+            days_ago = ""
+            if hasattr(m, "created_at") and m.created_at:
+                delta = datetime.utcnow() - m.created_at
+                if delta.days == 0:
+                    days_ago = " (today)"
+                elif delta.days == 1:
+                    days_ago = " (yesterday)"
+                else:
+                    days_ago = f" ({delta.days}d ago)"
+            mem_type = m.type if isinstance(m.type, str) else m.type.value
+            lines.append(f"  [{mem_type}]{days_ago} {m.content}")
+        return "\n".join(lines)
+
+    def _format_today_usage(self) -> str:
+        if not self.today_usage:
+            return "  No phone usage data synced yet today."
+
+        REACTIVE = {
+            "com.instagram.android", "com.twitter.android",
+            "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
+            "com.facebook.katana", "com.snapchat.android",
+            "com.reddit.frontpage", "com.linkedin.android",
+            "com.google.android.youtube",
+        }
+
+        lines = []
+        total_seconds = sum(u.duration_seconds for u in self.today_usage)
+        for u in self.today_usage[:8]:  # top 8 apps
+            mins = u.duration_seconds // 60
+            if mins < 1:
+                continue
+            hours = mins // 60
+            display = f"{hours}h {mins % 60}m" if hours else f"{mins}m"
+            tag = " ⚠ reactive" if (u.app_package in REACTIVE or u.flagged_as_reactive) else ""
+            lines.append(f"  {u.app_name}: {display}{tag}")
+
+        total_mins = total_seconds // 60
+        total_display = f"{total_mins // 60}h {total_mins % 60}m" if total_mins >= 60 else f"{total_mins}m"
+        lines.append(f"  Total screen time today: {total_display}")
+        return "\n".join(lines)
 
     def _format_values(self) -> str:
         if not self.context.core_values:

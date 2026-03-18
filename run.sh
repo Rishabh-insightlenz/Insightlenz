@@ -51,16 +51,23 @@ echo "→ Waiting for PostgreSQL..."
 MAX_RETRIES=15
 COUNT=0
 until python3 -c "
-import asyncio, asyncpg, os
+import asyncio, asyncpg, os, ssl, re
+
 async def check():
-    url = os.getenv('DATABASE_URL','').replace('postgresql+asyncpg://', '')
-    await asyncpg.connect(url)
+    raw = os.getenv('DATABASE_URL', '')
+    # Strip SQLAlchemy driver prefix
+    dsn = re.sub(r'^postgresql\+asyncpg://', 'postgresql://', raw)
+    # Strip ?ssl=require — we handle SSL explicitly
+    dsn = re.sub(r'\?ssl=\w+', '', dsn)
+    # Use ssl='require' as asyncpg keyword arg
+    await asyncpg.connect(dsn, ssl='require')
+
 asyncio.run(check())
 " 2>/dev/null; do
   COUNT=$((COUNT + 1))
   if [ $COUNT -ge $MAX_RETRIES ]; then
-    echo "❌ PostgreSQL not reachable. Is Docker running?"
-    echo "   Run: docker-compose up -d"
+    echo "❌ PostgreSQL not reachable."
+    echo "   Check your DATABASE_URL in backend/.env"
     exit 1
   fi
   echo "   Retrying... ($COUNT/$MAX_RETRIES)"

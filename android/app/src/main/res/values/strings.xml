@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">InsightLenz</string>
+
+    <!--
+        Shown in Settings → Accessibility → InsightLenz.
+        Be honest about what we do — we watch app switches, nothing else.
+    -->
+    <string name="accessibility_service_description">InsightLenz watches which apps you open so it can nudge you when you\'ve spent time on distraction apps. It reads package names only — no screen content, no keystrokes, no personal data.</string>
+</resources>

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ── Networking ──────────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- ── Overlay on other apps ───────────────────────────────────────────── -->
+    <!--
+        Required for TYPE_ACCESSIBILITY_OVERLAY on Android 10+.
+        User grants via: Settings → Apps → Special app access → Display over other apps
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- ── Background OS layer ─────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+        foregroundServiceType="dataSync" — required on Android 14+ for services
+        that fetch data in the background (our morning brief / evening review).
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Restart service after phone reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Show morning brief + nudge notifications (required on Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+        Schedule exact alarms — needed for precise morning brief timing.
+        On Android 12+, user must grant this via Settings → Apps → Special app access.
+        We fall back to inexact repeating alarms if not granted.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!--
+        App usage stats — reads which apps were open and for how long.
+        Protected permission: user must grant via Settings → Apps → Special app access → Usage access.
+        We request this gracefully in-app, not at install time.
+    -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <application
+        android:name=".InsightLenzApp"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.InsightLenz"
+        android:usesCleartextTraffic="true">
+
+        <!-- ── Main Activity ────────────────────────────────────────────── -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ── Background Intelligence Service ─────────────────────────── -->
+        <!--
+            foregroundServiceType="dataSync": required on Android 14+ for network calls
+            while in the foreground. Morning brief = we're syncing data.
+        -->
+        <service
+            android:name=".service.BackgroundIntelligenceService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false"
+            android:stopWithTask="false" />
+        <!--
+            stopWithTask="false": keep the service alive even if the user swipes
+            away the app from recents. This is intentional — InsightLenz is an OS layer,
+            not a regular app.
+        -->
+
+        <!-- ── App Launch Detector (Accessibility Service) ──────────────── -->
+        <!--
+            This is what makes InsightLenz notice distraction patterns.
+            Requires user to manually grant in:
+            Settings → Accessibility → Downloaded apps → InsightLenz
+        -->
+        <service
+            android:name=".service.AppLaunchDetector"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- ── Boot Receiver ────────────────────────────────────────────── -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ── Alarm Receiver ───────────────────────────────────────────── -->
+        <receiver
+            android:name=".receiver.AlarmReceiver"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

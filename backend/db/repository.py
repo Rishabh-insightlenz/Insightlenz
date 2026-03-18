@@ -7,9 +7,9 @@ This keeps the AI and business logic clean and testable.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, desc
+from sqlalchemy import select, update, delete, desc, and_
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 import structlog
 
@@ -32,7 +32,7 @@ class UserContextRepository:
             id=context.id,
             name=context.name,
             role=context.role,
-            core_values=[v.model_dump() for v in context.core_values],
+            core_values=[v.model_dump(mode='json') for v in context.core_values],
             non_negotiables=context.non_negotiables,
             strengths=context.strengths,
             blind_spots=context.blind_spots,
@@ -40,10 +40,10 @@ class UserContextRepository:
             venture_stage=context.venture_stage,
             biggest_constraint=context.biggest_constraint,
             biggest_opportunity=context.biggest_opportunity,
-            current_priorities=[p.model_dump() for p in context.current_priorities],
-            active_projects=[p.model_dump() for p in context.active_projects],
+            current_priorities=[p.model_dump(mode='json') for p in context.current_priorities],
+            active_projects=[p.model_dump(mode='json') for p in context.active_projects],
             open_loops=context.open_loops,
-            goals=[g.model_dump() for g in context.goals],
+            goals=[g.model_dump(mode='json') for g in context.goals],
             known_reactive_triggers=context.known_reactive_triggers,
             typical_distraction_apps=context.typical_distraction_apps,
             peak_focus_times=context.peak_focus_times,
@@ -56,6 +56,13 @@ class UserContextRepository:
     async def get(self, user_id: UUID) -> UserContextDB | None:
         result = await self.db.execute(
             select(UserContextDB).where(UserContextDB.id == user_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_first(self) -> UserContextDB | None:
+        """Get the first (and only) user — single-user OS, no auth yet."""
+        result = await self.db.execute(
+            select(UserContextDB).limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -264,6 +271,56 @@ class AppUsageRepository:
             .where(AppUsageDB.user_id == user_id)
             .order_by(desc(AppUsageDB.started_at))
             .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def replace_today(
+        self,
+        user_id: UUID,
+        entries: list[dict],  # [{app_package, app_name, duration_seconds, flagged_as_reactive}]
+    ) -> None:
+        """
+        Replace today's usage snapshot with fresh data from the phone.
+        Called every 30 min by UsageSyncWorker — always shows the latest picture.
+        """
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Delete today's existing records for this user
+        await self.db.execute(
+            delete(AppUsageDB).where(
+                and_(
+                    AppUsageDB.user_id == user_id,
+                    AppUsageDB.started_at >= today_start,
+                )
+            )
+        )
+        # Insert fresh snapshot
+        now = datetime.utcnow()
+        for entry in entries:
+            record = AppUsageDB(
+                user_id=user_id,
+                app_package=entry["app_package"],
+                app_name=entry["app_name"],
+                duration_seconds=entry["duration_seconds"],
+                flagged_as_reactive=entry.get("flagged_as_reactive", False),
+                started_at=today_start,
+                ended_at=now,
+            )
+            self.db.add(record)
+        await self.db.flush()
+        log.info("app_usage_synced", user_id=str(user_id), apps=len(entries))
+
+    async def get_today_summary(self, user_id: UUID) -> list[AppUsageDB]:
+        """Get today's usage records, sorted by duration descending."""
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        result = await self.db.execute(
+            select(AppUsageDB)
+            .where(
+                and_(
+                    AppUsageDB.user_id == user_id,
+                    AppUsageDB.started_at >= today_start,
+                )
+            )
+            .order_by(desc(AppUsageDB.duration_seconds))
         )
         return list(result.scalars().all())
 
