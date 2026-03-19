@@ -26,7 +26,7 @@ private const val USE_PRODUCTION = false   // ← flip to true after Render depl
 private const val LOCAL_URL      = "http://192.168.29.238:8000/"
 private const val PRODUCTION_URL = "https://YOUR-APP-NAME.onrender.com/"  // ← paste Render URL here
 
-const val BACKEND_BASE_URL = if (USE_PRODUCTION) PRODUCTION_URL else LOCAL_URL
+val BACKEND_BASE_URL = if (USE_PRODUCTION) PRODUCTION_URL else LOCAL_URL
 
 interface InsightLenzApiService {
 
