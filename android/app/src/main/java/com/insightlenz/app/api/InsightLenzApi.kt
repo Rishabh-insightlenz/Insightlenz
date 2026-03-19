@@ -11,13 +11,22 @@ import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
 /**
- * !! IMPORTANT !!
- * Change this to your Mac Mini's local IP address.
- * On your Mac, run:  ifconfig | grep "inet " | grep -v 127
- * You'll see something like: inet 192.168.1.42
- * Set that IP here. The phone and Mac must be on the same WiFi.
+ * Backend URL — switch between local (Mac) and production (Render) here.
+ *
+ * LOCAL (Mac on same WiFi):
+ *   "http://192.168.29.238:8000/"
+ *
+ * PRODUCTION (Render — paste your Render URL below):
+ *   "https://insightlenz-backend.onrender.com/"   ← replace with your actual Render URL
+ *
+ * Once you deploy to Render, set USE_PRODUCTION = true and rebuild.
  */
-const val BACKEND_BASE_URL = "http://192.168.29.238:8000/"
+private const val USE_PRODUCTION = false   // ← flip to true after Render deploy
+
+private const val LOCAL_URL      = "http://192.168.29.238:8000/"
+private const val PRODUCTION_URL = "https://YOUR-APP-NAME.onrender.com/"  // ← paste Render URL here
+
+const val BACKEND_BASE_URL = if (USE_PRODUCTION) PRODUCTION_URL else LOCAL_URL
 
 interface InsightLenzApiService {
 
