@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: insightlenz-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: false
+      - key: DATABASE_URL
+        sync: false          # Set this manually in Render dashboard → your Supabase URL
+      - key: GROQ_API_KEY
+        sync: false          # Set this manually in Render dashboard
+      - key: ACTIVE_AI_PROVIDER
+        value: groq
+      - key: ACTIVE_AI_MODEL
+        value: llama-3.3-70b-versatile
+      - key: APP_SECRET_KEY
+        generateValue: true  # Auto-generated secure key

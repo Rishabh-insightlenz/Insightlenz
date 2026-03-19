@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    InsightLenz Logo — "Lens with a Star"
+    Concept: A fractured hexagonal lens / aperture with a central star spark.
+    The outer ring = the lens / OS layer that wraps everything.
+    The inner star = Jarvis intelligence at the core.
+    Color: Google Blue (#4285F4) on pure black, consistent with the design tokens.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background circle -->
+    <path
+        android:pathData="M54,54 m-48,0 a48,48 0 1,1 96,0 a48,48 0 1,1 -96,0"
+        android:fillColor="#080808" />
+
+    <!-- Outer ring arc segments (lens aperture / iris blades feel) -->
+    <!-- Top segment -->
+    <path
+        android:pathData="M54,10 L62,24 L46,24 Z"
+        android:fillColor="#4285F4"
+        android:fillAlpha="0.9" />
+    <!-- Top-right -->
+    <path
+        android:pathData="M87.4,27 L78.5,38.5 L74.5,24 Z"
+        android:fillColor="#4285F4"
+        android:fillAlpha="0.7" />
+    <!-- Right -->
+    <path
+        android:pathData="M98,54 L83,59 L83,49 Z"
+        android:fillColor="#4285F4"
+        android:fillAlpha="0.5" />
+    <!-- Bottom-right -->
+    <path
+        android:pathData="M87.4,81 L74.5,84 L78.5,69.5 Z"
+        android:fillColor="#4285F4"
+        android:fillAlpha="0.7" />
+    <!-- Bottom -->
+    <path
+        android:pathData="M54,98 L46,84 L62,84 Z"
+        android:fillColor="#4285F4"
+        android:fillAlpha="0.9" />
+    <!-- Bottom-left -->
+    <path
+        android:pathData="M20.6,81 L29.5,69.5 L33.5,84 Z"
+        android:fillColor="#4285F4"
+        android:fillAlpha="0.7" />
+    <!-- Left -->
+    <path
+        android:pathData="M10,54 L25,49 L25,59 Z"
+        android:fillColor="#4285F4"
+        android:fillAlpha="0.5" />
+    <!-- Top-left -->
+    <path
+        android:pathData="M20.6,27 L33.5,24 L29.5,38.5 Z"
+        android:fillColor="#4285F4"
+        android:fillAlpha="0.7" />
+
+    <!-- Middle ring — thin circle outline -->
+    <path
+        android:pathData="M54,54 m-32,0 a32,32 0 1,1 64,0 a32,32 0 1,1 -64,0"
+        android:strokeColor="#4285F4"
+        android:strokeWidth="1.2"
+        android:fillColor="#00000000"
+        android:strokeAlpha="0.4" />
+
+    <!-- Inner lens circle -->
+    <path
+        android:pathData="M54,54 m-18,0 a18,18 0 1,1 36,0 a18,18 0 1,1 -36,0"
+        android:strokeColor="#4285F4"
+        android:strokeWidth="1.5"
+        android:fillColor="#0A1628" />
+
+    <!-- Central star spark — 4-point star (✦) -->
+    <!-- Vertical spike -->
+    <path
+        android:pathData="M54,40 L56,52 L54,64 L52,52 Z"
+        android:fillColor="#4285F4" />
+    <!-- Horizontal spike -->
+    <path
+        android:pathData="M40,54 L52,56 L64,54 L52,52 Z"
+        android:fillColor="#4285F4" />
+    <!-- Bright center dot -->
+    <path
+        android:pathData="M54,54 m-2.5,0 a2.5,2.5 0 1,1 5,0 a2.5,2.5 0 1,1 -5,0"
+        android:fillColor="#FFFFFF" />
+
+</vector>

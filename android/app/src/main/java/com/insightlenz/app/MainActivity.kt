@@ -1,11 +1,14 @@
 package com.insightlenz.app
 
+import android.content.IntentFilter
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 import androidx.core.view.WindowCompat
+import com.insightlenz.app.receiver.ScreenOnReceiver
 import com.insightlenz.app.ui.screens.HomeScreen
 import com.insightlenz.app.ui.screens.SetupScreen
 import com.insightlenz.app.ui.screens.hasUsageAccess
@@ -14,10 +17,17 @@ import com.insightlenz.app.ui.theme.InsightLenzTheme
 
 class MainActivity : ComponentActivity() {
 
+    // Dynamic receiver — ACTION_SCREEN_ON can't be registered in the manifest
+    private val screenOnReceiver = ScreenOnReceiver()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // Register screen-on receiver
+        val filter = IntentFilter(Intent.ACTION_SCREEN_ON)
+        registerReceiver(screenOnReceiver, filter)
 
         setContent {
             InsightLenzTheme {
@@ -26,11 +36,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Re-check permissions every time the activity resumes
-    // (user may return from Settings having just granted something)
     override fun onResume() {
         super.onResume()
-        // Compose state will recompose automatically via the polling in SetupScreen
+        // Compose state recomposes automatically via SetupScreen polling
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { unregisterReceiver(screenOnReceiver) } catch (_: Exception) {}
     }
 }
 

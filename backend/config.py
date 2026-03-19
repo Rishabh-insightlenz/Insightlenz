@@ -10,8 +10,6 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://insightlenz:password@localhost:5432/insightlenz"
-    redis_url: str = "redis://localhost:6379/0"
-
     # AI — fully model-agnostic, swap without touching any other code
     active_ai_provider: Literal["anthropic", "openai", "google", "groq"] = "anthropic"
     active_ai_model: str = "claude-sonnet-4-6"

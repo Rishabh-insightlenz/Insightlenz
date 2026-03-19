@@ -74,6 +74,41 @@ class UsageStatsHelper(private val context: Context) {
     }
 
     /**
+     * Returns recently used apps sorted by lastTimeUsed descending.
+     * Great for the "recently opened apps" horizontal row on the home screen.
+     */
+    fun getRecentlyUsedApps(limit: Int = 8): List<AppUsageStat> {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val now = System.currentTimeMillis()
+        val since = now - 1000L * 60 * 60 * 24 * 3 // last 3 days
+
+        val stats = usm.queryUsageStats(
+            UsageStatsManager.INTERVAL_BEST,
+            since,
+            now
+        ) ?: return emptyList()
+
+        val pm = context.packageManager
+
+        return stats
+            .filter { it.lastTimeUsed > 0 }
+            .filter { it.packageName != context.packageName }
+            .filter { !it.packageName.startsWith("com.android.systemui") }
+            .filter { !it.packageName.startsWith("com.google.android.inputmethod") }
+            .filter { !it.packageName.startsWith("android") }
+            .sortedByDescending { it.lastTimeUsed }
+            .take(limit)
+            .mapNotNull { stat ->
+                val appName = resolveAppName(pm, stat.packageName) ?: return@mapNotNull null
+                AppUsageStat(
+                    packageName = stat.packageName,
+                    appName = appName,
+                    totalTimeMs = stat.totalTimeInForeground
+                )
+            }
+    }
+
+    /**
      * Check if PACKAGE_USAGE_STATS permission is granted.
      * This permission requires user to manually enable it in:
      * Settings → Apps → Special app access → Usage access

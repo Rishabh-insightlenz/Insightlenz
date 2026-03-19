@@ -142,6 +142,26 @@
             android:name=".receiver.AlarmReceiver"
             android:exported="false" />
 
+        <!-- ── Lock Screen Activity ─────────────────────────────────────── -->
+        <!--
+            showWhenLocked: appears before the system keyguard
+            turnScreenOn:   wakes the screen when launched via ScreenOnReceiver
+            Tap-to-dismiss finishes this Activity → user lands on MainActivity
+        -->
+        <activity
+            android:name=".ui.screens.LockActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="stateAlwaysHidden" />
+
+        <!--
+            ScreenOnReceiver is registered DYNAMICALLY in MainActivity (not here)
+            because ACTION_SCREEN_ON cannot be received by manifest receivers.
+        -->
+
     </application>
 
 </manifest>
