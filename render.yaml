@@ -1,0 +1,44 @@
+# InsightLenz — Render deployment config
+# Render reads this file automatically from the repo root.
+# Docs: https://render.com/docs/render-yaml-spec
+
+services:
+  - type: web
+    name: insightlenz-backend
+    env: python
+    region: oregon
+    plan: free
+    rootDir: backend           # app lives in backend/ subdirectory
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh  # handles URL normalisation, migrations, then uvicorn
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: insightlenz-db   # auto-links to the PostgreSQL service below
+          property: connectionString
+      - key: APP_SECRET_KEY
+        generateValue: true      # Render generates a secure random value on first deploy
+      # ── AI provider — change these to switch models with zero code changes ──
+      - key: ACTIVE_AI_PROVIDER
+        value: groq              # groq free tier; change to anthropic/openai/google as needed
+      - key: ACTIVE_AI_MODEL
+        value: llama-3.3-70b-versatile
+      - key: GROQ_API_KEY
+        sync: false              # set manually in Render dashboard
+      # Leave blank if not using these providers:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+
+databases:
+  - name: insightlenz-db
+    databaseName: insightlenz
+    plan: free                   # Render free PostgreSQL — expires after 90 days, upgrade for prod
+    region: oregon
