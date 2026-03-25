@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Literal
 
 
@@ -10,6 +11,18 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://insightlenz:password@localhost:5432/insightlenz"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Render injects DATABASE_URL as postgres:// or postgresql://.
+        SQLAlchemy + asyncpg requires postgresql+asyncpg://."""
+        if isinstance(v, str):
+            if v.startswith("postgres://"):
+                return v.replace("postgres://", "postgresql+asyncpg://", 1)
+            if v.startswith("postgresql://") and "+asyncpg" not in v:
+                return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
     # AI — fully model-agnostic, swap without touching any other code
     active_ai_provider: Literal["anthropic", "openai", "google", "groq"] = "anthropic"
     active_ai_model: str = "claude-sonnet-4-6"
