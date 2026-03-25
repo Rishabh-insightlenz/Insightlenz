@@ -75,37 +75,41 @@ class SessionSummary(BaseModel):
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
 
-async def _bootstrap(db: AsyncSession) -> tuple[ContextEngine, UUID]:
+async def _bootstrap(db: AsyncSession) -> tuple[ContextEngine, Optional[UUID]]:
     """
     Load user context, memories, and today's phone usage from DB.
-    Build a fully-enriched ContextEngine — this is what makes the AI aware
-    of the user's real-world state, not just their static profile.
+    Falls back gracefully if DB is unavailable or not yet initialised —
+    the AI still responds, it just won't have persistent memory until the
+    DB is reachable and a user context has been POSTed to /context/init.
     """
-    user_repo = UserContextRepository(db)
-    db_ctx = await user_repo.get_first()
-    if not db_ctx:
-        raise HTTPException(
-            status_code=404,
-            detail="User context not initialized. POST /context/init first.",
-        )
+    try:
+        user_repo = UserContextRepository(db)
+        db_ctx = await user_repo.get_first()
 
-    context = UserContextRepository.to_pydantic(db_ctx)
-    user_id = db_ctx.id
+        if db_ctx:
+            context = UserContextRepository.to_pydantic(db_ctx)
+            user_id = db_ctx.id
 
-    # Load recent memories — what InsightLenz has learned from past conversations
-    memory_repo = MemoryRepository(db)
-    memories = await memory_repo.get_recent(user_id, limit=20)
+            memory_repo = MemoryRepository(db)
+            memories = await memory_repo.get_recent(user_id, limit=20)
 
-    # Load today's phone usage — what apps, how long
-    usage_repo = AppUsageRepository(db)
-    today_usage = await usage_repo.get_today_summary(user_id)
+            usage_repo = AppUsageRepository(db)
+            today_usage = await usage_repo.get_today_summary(user_id)
 
-    engine = ContextEngine(
-        user_context=context,
-        memories=memories,
-        today_usage=today_usage,
-    )
-    return engine, user_id
+            return ContextEngine(
+                user_context=context,
+                memories=memories,
+                today_usage=today_usage,
+            ), user_id
+
+    except Exception as e:
+        log.warning("bootstrap_db_unavailable", error=str(e))
+
+    # Fallback: DB unavailable or context not yet initialised.
+    # AI still works — no persistence until DB is reachable.
+    from models.user import UserContext as UserContextModel
+    fallback = UserContextModel(name="Rishi", role="Founder")
+    return ContextEngine(user_context=fallback), None
 
 
 # ── Background: memory extraction ─────────────────────────────────────────────
@@ -149,34 +153,42 @@ async def chat(
     before, and what they've actually been doing on their phone today.
     """
     engine, user_id = await _bootstrap(db)
-    conv_repo = ConversationRepository(db)
 
-    # Load recent conversation history for this session
-    recent = await conv_repo.get_recent(user_id, limit=20, session_id=request.session_id)
-    history = [AIMessage(role=msg.role, content=msg.content) for msg in recent]
+    # Load conversation history — skip gracefully if DB is unavailable
+    history = []
+    if user_id is not None:
+        try:
+            conv_repo = ConversationRepository(db)
+            recent = await conv_repo.get_recent(user_id, limit=20, session_id=request.session_id)
+            history = [AIMessage(role=msg.role, content=msg.content) for msg in recent]
+        except Exception as e:
+            log.warning("chat_history_unavailable", error=str(e))
+    conv_repo = ConversationRepository(db)
 
     orchestrator = AIOrchestrator(engine)
     response = await orchestrator.think(request.message, conversation_history=history)
 
-    # Persist the exchange
-    await conv_repo.save_exchange(
-        user_id=user_id,
-        user_message=request.message,
-        assistant_response=response.content,
-        source="chat",
-        provider=response.provider,
-        model=response.model,
-        session_id=request.session_id,
-    )
-
-    # Fire memory extraction in the background — doesn't block the response
-    background_tasks.add_task(
-        _extract_memories_background,
-        user_id=user_id,
-        user_message=request.message,
-        assistant_response=response.content,
-        orchestrator=orchestrator,
-    )
+    # Persist the exchange — silently skip if DB is unavailable
+    if user_id is not None:
+        try:
+            await conv_repo.save_exchange(
+                user_id=user_id,
+                user_message=request.message,
+                assistant_response=response.content,
+                source="chat",
+                provider=response.provider,
+                model=response.model,
+                session_id=request.session_id,
+            )
+            background_tasks.add_task(
+                _extract_memories_background,
+                user_id=user_id,
+                user_message=request.message,
+                assistant_response=response.content,
+                orchestrator=orchestrator,
+            )
+        except Exception as e:
+            log.warning("chat_persist_failed", error=str(e))
 
     return ChatResponse(
         response=response.content,
