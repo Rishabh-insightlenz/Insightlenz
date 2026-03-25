@@ -12,6 +12,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: bash start.sh  # handles URL normalisation, migrations, then uvicorn
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"            # CRITICAL: runtime.txt is ignored by Render — this is the only way to pin Python
       - key: APP_ENV
         value: production
       - key: DEBUG
