@@ -42,9 +42,26 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
 
     @model_validator(mode="after")
-    def set_default_model_for_provider(self) -> "Settings":
-        """If ACTIVE_AI_MODEL is not set, pick the right default for the active provider.
-        Prevents sending a Claude model name to Groq (and similar mismatches)."""
+    def configure_provider(self) -> "Settings":
+        """1. Auto-select correct model if ACTIVE_AI_MODEL is not explicitly set.
+        2. Fall back to any provider that actually has an API key configured —
+           prevents 500s when ACTIVE_AI_PROVIDER is set but the key is missing."""
+        api_keys = {
+            "anthropic": self.anthropic_api_key,
+            "openai":    self.openai_api_key,
+            "google":    self.google_api_key,
+            "groq":      self.groq_api_key,
+        }
+
+        # If the configured provider has no key, fall back to whichever provider does
+        if not api_keys.get(self.active_ai_provider):
+            for provider, key in api_keys.items():
+                if key:
+                    self.active_ai_provider = provider
+                    self.active_ai_model = _PROVIDER_DEFAULT_MODELS[provider]
+                    return self
+
+        # Provider has a key — just ensure model is set correctly
         if not self.active_ai_model:
             self.active_ai_model = _PROVIDER_DEFAULT_MODELS.get(
                 self.active_ai_provider, "llama-3.3-70b-versatile"
