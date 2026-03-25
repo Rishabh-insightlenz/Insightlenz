@@ -19,12 +19,20 @@ class Base(DeclarativeBase):
 
 
 # Create async engine
+# connect_args for Supabase compatibility:
+#   - ssl="require"                  — Supabase mandates TLS
+#   - prepared_statement_cache_size=0 — required when using Supabase connection pooler
+#     (transaction/session pooler doesn't support named prepared statements)
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
+    connect_args={
+        "ssl": "require",
+        "prepared_statement_cache_size": 0,
+    },
 )
 
 AsyncSessionLocal = async_sessionmaker(
